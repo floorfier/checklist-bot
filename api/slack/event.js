@@ -1,16 +1,22 @@
-// /api/slack/events.js
-export default async function handler(req, res) {
-  if (req.method === 'POST') {
-    const { type, challenge } = req.body;
+export const config = {
+  api: {
+    bodyParser: true, // aseguramos que Next.js parsea el body JSON
+  },
+};
 
-    if (type === 'url_verification') {
-      return res.status(200).send(challenge); // Verificación inicial de Slack
-    }
-
-    // Aquí vendrán eventos tipo "message", "app_mention", etc.
-    return res.status(200).end();
+export default function handler(req, res) {
+  if (req.method !== 'POST') {
+    res.setHeader('Allow', 'POST');
+    return res.status(405).end('Method Not Allowed');
   }
 
-  res.setHeader('Allow', 'POST');
-  res.status(405).end('Method Not Allowed');
+  console.log('BODY:', req.body); // para debug en logs de Vercel
+
+  const { type, challenge } = req.body;
+
+  if (type === 'url_verification') {
+    return res.status(200).send(challenge);
+  }
+
+  return res.status(200).end();
 }
