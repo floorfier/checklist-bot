@@ -1,4 +1,6 @@
 export default function handler(req, res) {
+  console.log("🔔 Incoming Slack event:", req.body);
+
   if (req.method !== 'POST') {
     res.setHeader('Allow', ['POST']);
     return res.status(405).end(`Method ${req.method} Not Allowed`);
