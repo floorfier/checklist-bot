@@ -8,16 +8,23 @@ const CHECKLIST = [
 ];
 
 export default async function handler(req, res) {
+  console.log("🔔 Incoming request to /api/migrate");
+
   if (req.method !== 'POST') {
+    console.warn("⚠️ Method not allowed:", req.method);
     res.setHeader('Allow', ['POST']);
     return res.status(405).end(`Method ${req.method} Not Allowed`);
   }
 
-  const { channelId, clientName } = req.body;
+  const { channelId, clientName, extraInfo } = req.body;
+  console.log("📦 Payload received:", { channelId, clientName, extraInfo });
+
   if (!channelId || !clientName) {
+    console.error("❌ Missing required fields");
     return res.status(400).json({ error: 'Faltan channelId o clientName' });
   }
 
+  // Construir bloques de mensaje para Slack
   const blocks = [
     {
       type: 'section',
@@ -26,6 +33,17 @@ export default async function handler(req, res) {
         text: `*Checklist de migración para cliente:* ${clientName}`,
       },
     },
+    ...(extraInfo
+      ? [
+          {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: `📌 *Notas adicionales:*\n${extraInfo}`,
+            },
+          },
+        ]
+      : []),
     { type: 'divider' },
     ...CHECKLIST.map((item) => ({
       type: 'actions',
@@ -45,7 +63,7 @@ export default async function handler(req, res) {
   ];
 
   try {
-    const response = await fetch('https://slack.com/api/chat.postMessage', {
+    const slackRes = await fetch('https://slack.com/api/chat.postMessage', {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${SLACK_TOKEN}`,
@@ -53,19 +71,22 @@ export default async function handler(req, res) {
       },
       body: JSON.stringify({
         channel: channelId,
-        blocks,
         text: `Checklist migración para ${clientName}`,
+        blocks,
       }),
     });
 
-    const data = await response.json();
+    const result = await slackRes.json();
+    console.log("✅ Slack API response:", result);
 
-    if (!data.ok) {
-      return res.status(500).json({ error: 'Error enviando mensaje a Slack', details: data });
+    if (!result.ok) {
+      console.error("❌ Slack error:", result);
+      return res.status(500).json({ error: 'Error enviando mensaje a Slack', details: result });
     }
 
-    res.status(200).json({ ok: true, ts: data.ts, channel: data.channel });
-  } catch (error) {
-    res.status(500).json({ error: 'Error interno', details: error.message });
+    return res.status(200).json({ ok: true, ts: result.ts, channel: result.channel });
+  } catch (err) {
+    console.error("🔥 Error interno:", err);
+    return res.status(500).json({ error: 'Error interno', details: err.message });
   }
 }
