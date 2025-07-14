@@ -1,9 +1,7 @@
-import axios from 'axios';
-
 const SLACK_TOKEN = process.env.SLACK_BOT_TOKEN;
 
 // Guardar estado simple en memoria para ejemplo.
-// En producción, deberías guardar esto en DB o caché
+// En producción, guarda esto en DB o caché
 const taskStatusMap = {}; // { ts: { taskId: 'complete' | 'incomplete', ... } }
 
 function buildBlocksFromStatus(currentStatus) {
@@ -51,8 +49,7 @@ export default async function handler(req, res) {
   }
 
   const payload = JSON.parse(req.body.payload);
-
-  const { actions, message, channel, user } = payload;
+  const { actions, message, channel } = payload;
 
   if (!actions || actions.length === 0) {
     return res.status(400).send('No actions found');
@@ -65,37 +62,35 @@ export default async function handler(req, res) {
   const currentStatus = taskStatusMap[message.ts] || {};
   const currentValue = currentStatus[taskId] || 'incomplete';
 
-  // Toggle status
+  // Cambiar estado
   const newValue = currentValue === 'incomplete' ? 'complete' : 'incomplete';
   currentStatus[taskId] = newValue;
   taskStatusMap[message.ts] = currentStatus;
 
-  // Reconstruir bloques con estado actualizado
   const updatedBlocks = buildBlocksFromStatus(currentStatus);
 
   try {
-    // Actualizar mensaje en Slack
-    const response = await axios.post(
-      'https://slack.com/api/chat.update',
-      {
+    const response = await fetch('https://slack.com/api/chat.update', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${SLACK_TOKEN}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
         channel: channel.id,
         ts: message.ts,
         blocks: updatedBlocks,
         text: 'Checklist actualizada',
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${SLACK_TOKEN}`,
-          'Content-Type': 'application/json',
-        },
-      }
-    );
+      }),
+    });
 
-    if (!response.data.ok) {
-      return res.status(500).json({ error: 'Error actualizando mensaje', details: response.data });
+    const data = await response.json();
+
+    if (!data.ok) {
+      return res.status(500).json({ error: 'Error actualizando mensaje', details: data });
     }
 
-    res.status(200).send(); // respuesta vacía para Slack
+    res.status(200).send(); // vacía para Slack
   } catch (error) {
     res.status(500).json({ error: 'Error interno', details: error.message });
   }

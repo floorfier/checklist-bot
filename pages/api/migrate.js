@@ -1,5 +1,3 @@
-import axios from 'axios';
-
 const SLACK_TOKEN = process.env.SLACK_BOT_TOKEN;
 
 const CHECKLIST = [
@@ -20,7 +18,6 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'Faltan channelId o clientName' });
   }
 
-  // Construir bloques de mensaje con botones para Slack
   const blocks = [
     {
       type: 'section',
@@ -48,26 +45,26 @@ export default async function handler(req, res) {
   ];
 
   try {
-    const response = await axios.post(
-      'https://slack.com/api/chat.postMessage',
-      {
+    const response = await fetch('https://slack.com/api/chat.postMessage', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${SLACK_TOKEN}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
         channel: channelId,
         blocks,
         text: `Checklist migración para ${clientName}`,
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${SLACK_TOKEN}`,
-          'Content-Type': 'application/json',
-        },
-      }
-    );
+      }),
+    });
 
-    if (!response.data.ok) {
-      return res.status(500).json({ error: 'Error enviando mensaje a Slack', details: response.data });
+    const data = await response.json();
+
+    if (!data.ok) {
+      return res.status(500).json({ error: 'Error enviando mensaje a Slack', details: data });
     }
 
-    res.status(200).json({ ok: true, ts: response.data.ts, channel: response.data.channel });
+    res.status(200).json({ ok: true, ts: data.ts, channel: data.channel });
   } catch (error) {
     res.status(500).json({ error: 'Error interno', details: error.message });
   }
