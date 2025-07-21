@@ -11,7 +11,7 @@ export default async function handler(req, res) {
     return res.status(405).end(`Method ${req.method} Not Allowed`);
   }
 
-  let { channelId, clientEmail, extraInfo } = req.body;
+  let { channelId, clientEmail, extraInfo, userId } = req.body;
 
   // 👇 Si viene desde un Slack Slash Command, parseamos el campo "text"
   if (!channelId && typeof req.body.text === 'string') {
@@ -27,9 +27,12 @@ export default async function handler(req, res) {
     channelId = args.channelId;
     clientEmail = args.clientEmail;
     extraInfo = args.extraInfo?.replace(/\\n/g, '\n');
+    userId = args.userId || userId; // userId opcional desde texto también
   }
 
-  console.log("📦 Final values:", { channelId, clientEmail, extraInfo });
+  const slackUserId = userId || req.body.user_id || 'unknown user';
+
+  console.log("📦 Final values:", { channelId, clientEmail, extraInfo, slackUserId });
 
   if (!channelId || !clientEmail) {
     console.error("❌ Missing required fields");
@@ -93,13 +96,13 @@ export default async function handler(req, res) {
     console.log("✅ Slack API response:", result);
 
     if (!result.ok) {
-      console.error("❌ Slack error:", result);
+      console.error(`❌ Slack error para usuario ${slackUserId}:`, result);
       return res.status(500).json({ error: 'Error enviando mensaje a Slack', details: result });
     }
 
     return res.status(200).json({ ok: true, ts: result.ts, channel: result.channel });
   } catch (err) {
-    console.error("🔥 Error interno:", err);
+    console.error(`🔥 Error interno para usuario ${slackUserId}:`, err);
     return res.status(500).json({ error: 'Error interno', details: err.message });
   }
 }

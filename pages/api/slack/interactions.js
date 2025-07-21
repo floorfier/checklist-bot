@@ -112,13 +112,13 @@ export default async function handler(req, res) {
     const data = await response.json();
 
     if (!data.ok) {
-      console.error('Slack API error:', data);
+      console.error(`❌ Slack API error para usuario ${username}:`, data);
       return res.status(500).json({ error: 'Error actualizando mensaje', details: data });
     }
 
     res.status(200).end();
   } catch (error) {
-    console.error('Internal error:', error);
+    console.error(`🔥 Internal error para usuario ${username}:`, error);
     res.status(500).json({ error: 'Error interno', details: error.message });
   }
 }
