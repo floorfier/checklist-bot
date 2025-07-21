@@ -1,11 +1,28 @@
 const SLACK_TOKEN = process.env.SLACK_BOT_TOKEN;
 
 const CHECKLIST = [
-  { id: 'create_account', label: 'Crear cuenta (Anna)' },
-  { id: 'migrate_tours', label: 'Migrar tours (Bonsi)' },
-  { id: 'add_subscription', label: 'Añadir suscripción (Kevin)' },
-  { id: 'notify_client', label: 'Notificar al cliente (Anna)' },
-];
+    {
+      id: 'provide_realistico_email',
+      label: 'Proveer el realisti.co email y confirmar (migrar tours, plan en Floorfy, próxima fecha de renovación) @Annamaria Anastasia',
+    },
+    {
+      id: 'create_account_and_migrate',
+      label: 'Crear cuenta, migrar los tours y dejar suscripción preparada. @Kevin Ramos',
+    },
+    {
+      id: 'confirm_client_activation',
+      label: 'Confirmar cliente ha activado bien Floorfy @Annamaria Anastasia',
+    },
+    {
+      id: 'cancel_subscription',
+      label: 'Cancelar la subscripción en realistico bd y stripe @Didac @Kevin Ramos',
+    },
+    {
+      id: 'celebration_shot',
+      label: 'Chupito de celebración @Annamaria Anastasia @Kevin Ramos @María Leguizamón @sergi @Didac',
+    },
+  ];
+
 
 export const config = {
   api: {
@@ -22,7 +39,7 @@ export default async function handler(req, res) {
     return res.status(405).end(`Method ${req.method} Not Allowed`);
   }
 
-  let channelId, clientName, extraInfo;
+  let channelId, clientEmail, extraInfo;
   let isSlackCommand = false;
 
   const contentType = req.headers['content-type'] || '';
@@ -40,17 +57,17 @@ export default async function handler(req, res) {
     );
 
     channelId = args.channelId || userId; // fallback to user DM
-    clientName = args.clientName || 'Cliente';
+    clientEmail = args.clientEmail || 'E-mail del cliente';
     extraInfo = args.extraInfo || '';
   } else {
-    ({ channelId, clientName, extraInfo } = req.body);
+    ({ channelId, clientEmail, extraInfo } = req.body);
   }
 
-  console.log("📦 Payload received:", { channelId, clientName, extraInfo });
+  console.log("📦 Payload received:", { channelId, clientEmail, extraInfo });
 
-  if (!channelId || !clientName) {
+  if (!channelId || !clientEmail) {
     console.error("❌ Missing required fields");
-    return res.status(400).json({ error: 'Faltan channelId o clientName' });
+    return res.status(400).json({ error: 'Faltan channelId o clientEmail' });
   }
 
   const blocks = [
@@ -58,7 +75,7 @@ export default async function handler(req, res) {
       type: 'section',
       text: {
         type: 'mrkdwn',
-        text: `*Checklist de migración para cliente:* ${clientName}`,
+        text: `*Checklist de migración para el cliente:* ${clientEmail}`,
       },
     },
     ...(extraInfo
@@ -99,7 +116,7 @@ export default async function handler(req, res) {
       },
       body: JSON.stringify({
         channel: channelId,
-        text: `Checklist migración para ${clientName}`,
+        text: `Checklist migración para ${clientEmail}`,
         blocks,
       }),
     });
