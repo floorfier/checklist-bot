@@ -32,8 +32,25 @@ export default async function handler(req, res) {
     return res.status(405).end(`Method ${req.method} Not Allowed`);
   }
 
-  const { channelId, clientEmail, extraInfo } = req.body;
-  console.log("📦 Payload received:", { channelId, clientEmail, extraInfo });
+  let { channelId, clientEmail, extraInfo } = req.body;
+
+  // 👇 Si viene desde un Slack Slash Command, parseamos el campo "text"
+  if (!channelId && typeof req.body.text === 'string') {
+    console.log('🔍 Parsing text from Slack command:', req.body.text);
+
+    const args = Object.fromEntries(
+      req.body.text.match(/(\w+)=("[^"]+"|\S+)/g)?.map(pair => {
+        const [key, value] = pair.split('=');
+        return [key, value.replace(/^"|"$/g, '')];
+      }) || []
+    );
+
+    channelId = args.channelId;
+    clientEmail = args.clientEmail;
+    extraInfo = args.extraInfo?.replace(/\\n/g, '\n');
+  }
+
+  console.log("📦 Final values:", { channelId, clientEmail, extraInfo });
 
   if (!channelId || !clientEmail) {
     console.error("❌ Missing required fields");

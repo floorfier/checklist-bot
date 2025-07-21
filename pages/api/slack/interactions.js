@@ -1,6 +1,6 @@
 const SLACK_TOKEN = process.env.SLACK_BOT_TOKEN;
 
-// Estado simple en memoria (solo para ejemplo)
+// Estado simple en memoria (solo ejemplo)
 const taskStatusMap = {}; // { ts: { taskId: 'complete' | 'incomplete', ... } }
 
 function buildBlocksFromStatus(currentStatus) {
@@ -79,7 +79,6 @@ export default async function handler(req, res) {
     return res.status(405).end(`Method ${req.method} Not Allowed`);
   }
 
-  // Slack envía payload en un campo que es string JSON, hay que parsear
   if (!req.body.payload) {
     return res.status(400).send('Missing payload');
   }
@@ -102,14 +101,13 @@ export default async function handler(req, res) {
   const taskId = action.action_id;
 
   const username = user?.username || user?.name || 'Unknown user';
-
-  console.log(`📩 Message from user ${username}: ${taskId}`);
+  console.log(`📩 Message from user ${username}: toggling task "${taskId}"`);
 
   // Obtener estado actual o inicializar
   const currentStatus = taskStatusMap[message.ts] || {};
   const currentValue = currentStatus[taskId] || 'incomplete';
 
-  // Toggle status
+  // Alternar estado
   const newValue = currentValue === 'incomplete' ? 'complete' : 'incomplete';
   currentStatus[taskId] = newValue;
   taskStatusMap[message.ts] = currentStatus;
@@ -139,7 +137,7 @@ export default async function handler(req, res) {
       return res.status(500).json({ error: 'Error actualizando mensaje', details: data });
     }
 
-    res.status(200).end(); // Ok para Slack
+    res.status(200).end();
   } catch (error) {
     console.error('Internal error:', error);
     res.status(500).json({ error: 'Error interno', details: error.message });
