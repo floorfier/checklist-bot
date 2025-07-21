@@ -38,7 +38,7 @@ export default async function handler(req, res) {
   const username = await getSlackUsername(slackUserId);
 
   if (!channelId || !clientEmail) {
-    console.error(`❌ Missing required fields from user ${slackUserId}`, {
+    console.error(`❌ Missing required fields from ${username} (${slackUserId})`, {
       channelId,
       clientEmail,
       extraInfo,
