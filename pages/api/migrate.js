@@ -35,7 +35,11 @@ export default async function handler(req, res) {
   console.log("📦 Final values:", { channelId, clientEmail, extraInfo, slackUserId });
 
   if (!channelId || !clientEmail) {
-    console.error("❌ Missing required fields");
+    console.error(`❌ Missing required fields from user ${slackUserId}`, {
+      channelId,
+      clientEmail,
+      extraInfo,
+    });
     return res.status(400).json({ error: 'Faltan channelId o clientEmail' });
   }
 
