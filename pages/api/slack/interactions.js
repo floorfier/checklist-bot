@@ -1,32 +1,11 @@
+import { CHECKLIST } from './checklist.js';
+
 const SLACK_TOKEN = process.env.SLACK_BOT_TOKEN;
 
 // Estado simple en memoria (solo ejemplo)
 const taskStatusMap = {}; // { ts: { taskId: 'complete' | 'incomplete', ... } }
 
 function buildBlocksFromStatus(currentStatus) {
-  const CHECKLIST = [
-    {
-      id: 'provide_realistico_email',
-      text: '1. Proveer el realisti.co email y confirmar (migrar tours, plan en Floorfy, próxima fecha de renovación)  @Annamaria Anastasia',
-    },
-    {
-      id: 'create_account_migrate',
-      text: '2. Crear cuenta, migrar los tours y dejar suscripción preparada. @Kevin Ramos',
-    },
-    {
-      id: 'confirm_activation',
-      text: '3. Confirmar cliente ha activado bien Floorfy @Annamaria Anastasia',
-    },
-    {
-      id: 'cancel_subscriptions',
-      text: '4. Cancelar la suscripción en realistico bd y Stripe @Didac @Kevin Ramos',
-    },
-    {
-      id: 'celebration_shot',
-      text: '5. 🥂 Chupito de celebración @Annamaria Anastasia @Kevin Ramos @María Leguizamón @sergi @Didac',
-    },
-  ];
-
   const blocks = [
     {
       type: 'section',
