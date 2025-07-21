@@ -16,15 +16,38 @@ export default async function handler(req, res) {
     return res.status(405).end(`Method ${req.method} Not Allowed`);
   }
 
-  const { channelId, clientName, extraInfo } = req.body;
-  console.log("📦 Payload received:", { channelId, clientName, extraInfo });
+  const isSlackCommand = req.headers['content-type']?.includes('application/x-www-form-urlencoded');
+
+  let channelId, clientName, extraInfo;
+
+  if (isSlackCommand) {
+    // Parse Slack command
+    const bodyText = typeof req.body === 'string' ? req.body : new URLSearchParams(req.body).toString();
+    const params = new URLSearchParams(bodyText);
+    const text = params.get('text');
+    const userId = params.get('user_id'); // fallback if no channelId provided
+
+    console.log("🧵 Slack command received:", text);
+
+    const args = Object.fromEntries(
+      [...text.matchAll(/(\w+)=(".*?"|\S+)/g)].map(([_, key, val]) => [key, val.replace(/^"|"$/g, '')])
+    );
+
+    channelId = args.channelId || userId;
+    clientName = args.clientName || 'Cliente';
+    extraInfo = args.extraInfo || '';
+  } else {
+    // JSON payload
+    ({ channelId, clientName, extraInfo } = req.body);
+  }
+
+  console.log("📦 Final parsed payload:", { channelId, clientName, extraInfo });
 
   if (!channelId || !clientName) {
     console.error("❌ Missing required fields");
     return res.status(400).json({ error: 'Faltan channelId o clientName' });
   }
 
-  // Construir bloques de mensaje para Slack
   const blocks = [
     {
       type: 'section',
@@ -34,15 +57,13 @@ export default async function handler(req, res) {
       },
     },
     ...(extraInfo
-      ? [
-          {
-            type: 'section',
-            text: {
-              type: 'mrkdwn',
-              text: `📌 *Notas adicionales:*\n${extraInfo}`,
-            },
+      ? [{
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: `📌 *Notas adicionales:*\n${extraInfo}`,
           },
-        ]
+        }]
       : []),
     { type: 'divider' },
     ...CHECKLIST.map((item) => ({
