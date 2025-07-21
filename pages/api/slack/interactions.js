@@ -1,4 +1,4 @@
-import CHECKLIST from '../../lib/checklist.js';
+import { CHECKLIST } from '../../lib/checklist.js';
 
 const SLACK_TOKEN = process.env.SLACK_BOT_TOKEN;
 
