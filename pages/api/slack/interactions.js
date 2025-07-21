@@ -7,25 +7,26 @@ function buildBlocksFromStatus(currentStatus) {
   const CHECKLIST = [
     {
       id: 'provide_realistico_email',
-      label: 'Proveer el realisti.co email y confirmar (migrar tours, plan en Floorfy, próxima fecha de renovación) @Annamaria Anastasia',
+      label: 'Proveer email y confirmar plan @Annamaria',
     },
     {
       id: 'create_account_and_migrate',
-      label: 'Crear cuenta, migrar los tours y dejar suscripción preparada. @Kevin Ramos',
+      label: 'Crear cuenta y migrar tours @Kevin',
     },
     {
       id: 'confirm_client_activation',
-      label: 'Confirmar cliente ha activado bien Floorfy @Annamaria Anastasia',
+      label: 'Confirmar activación cliente @Annamaria',
     },
     {
       id: 'cancel_subscription',
-      label: 'Cancelar la subscripción en realistico bd y stripe @Didac @Kevin Ramos',
+      label: 'Cancelar en bd y Stripe @Didac @Kevin',
     },
     {
       id: 'celebration_shot',
-      label: 'Chupito de celebración @Annamaria Anastasia @Kevin Ramos @María Leguizamón @sergi @Didac',
+      label: 'Chupito de celebración 🎉 @equipo',
     },
   ];
+
 
 
   return [
