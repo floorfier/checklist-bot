@@ -1,4 +1,5 @@
 import { CHECKLIST } from '../lib/checklist.js';
+import { getSlackUsername } from '../lib/getSlackUsername.js';
 
 const SLACK_TOKEN = process.env.SLACK_BOT_TOKEN;
 
@@ -33,6 +34,8 @@ export default async function handler(req, res) {
   const slackUserId = userId || req.body.user_id || 'unknown user';
 
   console.log("📦 Final values:", { channelId, clientEmail, extraInfo, slackUserId });
+
+  const username = await getSlackUsername(slackUserId);
 
   if (!channelId || !clientEmail) {
     console.error(`❌ Missing required fields from user ${slackUserId}`, {
