@@ -7,29 +7,27 @@ function buildBlocksFromStatus(currentStatus) {
   const CHECKLIST = [
     {
       id: 'provide_realistico_email',
-      label: 'Proveer email y confirmar plan @Annamaria',
+      text: '1. Proveer el realisti.co email y confirmar (migrar tours, plan en Floorfy, próxima fecha de renovación)  @Annamaria Anastasia',
     },
     {
-      id: 'create_account_and_migrate',
-      label: 'Crear cuenta y migrar tours @Kevin',
+      id: 'create_account_migrate',
+      text: '2. Crear cuenta, migrar los tours y dejar suscripción preparada. @Kevin Ramos',
     },
     {
-      id: 'confirm_client_activation',
-      label: 'Confirmar activación cliente @Annamaria',
+      id: 'confirm_activation',
+      text: '3. Confirmar cliente ha activado bien Floorfy @Annamaria Anastasia',
     },
     {
-      id: 'cancel_subscription',
-      label: 'Cancelar en bd y Stripe @Didac @Kevin',
+      id: 'cancel_subscriptions',
+      text: '4. Cancelar la suscripción en realistico bd y Stripe @Didac @Kevin Ramos',
     },
     {
       id: 'celebration_shot',
-      label: 'Chupito de celebración 🎉 @equipo',
+      text: '5. 🥂 Chupito de celebración @Annamaria Anastasia @Kevin Ramos @María Leguizamón @sergi @Didac',
     },
   ];
 
-
-
-  return [
+  const blocks = [
     {
       type: 'section',
       text: {
@@ -41,22 +39,38 @@ function buildBlocksFromStatus(currentStatus) {
     ...CHECKLIST.map((item) => {
       const done = currentStatus[item.id] === 'complete';
       return {
-        type: 'actions',
-        elements: [
-          {
-            type: 'button',
-            text: {
-              type: 'plain_text',
-              text: `${done ? '✅ ' : ''}${item.label}`,
-            },
-            action_id: item.id,
-            value: done ? 'complete' : 'incomplete',
-            style: done ? 'danger' : 'primary',
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text: `${done ? '✅ ' : ''}${item.text}`,
+        },
+        accessory: {
+          type: 'button',
+          text: {
+            type: 'plain_text',
+            text: done ? 'Desmarcar' : '✅ Hecho',
           },
-        ],
+          action_id: item.id,
+          value: done ? 'complete' : 'incomplete',
+          style: done ? 'danger' : 'primary',
+        },
       };
     }),
   ];
+
+  const allCompleted = CHECKLIST.every((item) => currentStatus[item.id] === 'complete');
+  if (allCompleted) {
+    blocks.push({ type: 'divider' });
+    blocks.push({
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: '🎉 *¡Checklist completa!* ¡Buen trabajo equipo!',
+      },
+    });
+  }
+
+  return blocks;
 }
 
 export default async function handler(req, res) {
