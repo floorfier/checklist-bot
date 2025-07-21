@@ -7,6 +7,12 @@ const CHECKLIST = [
   { id: 'notify_client', label: 'Notificar al cliente (Anna)' },
 ];
 
+export const config = {
+  api: {
+    bodyParser: true,
+  },
+};
+
 export default async function handler(req, res) {
   console.log("🔔 Incoming request to /api/migrate");
 
@@ -16,32 +22,31 @@ export default async function handler(req, res) {
     return res.status(405).end(`Method ${req.method} Not Allowed`);
   }
 
-  const isSlackCommand = req.headers['content-type']?.includes('application/x-www-form-urlencoded');
-
   let channelId, clientName, extraInfo;
+  let isSlackCommand = false;
 
-  if (isSlackCommand) {
-    // Parse Slack command
-    const bodyText = typeof req.body === 'string' ? req.body : new URLSearchParams(req.body).toString();
-    const params = new URLSearchParams(bodyText);
-    const text = params.get('text');
-    const userId = params.get('user_id'); // fallback if no channelId provided
+  const contentType = req.headers['content-type'] || '';
 
-    console.log("🧵 Slack command received:", text);
+  if (contentType.includes('application/x-www-form-urlencoded')) {
+    isSlackCommand = true;
 
+    const text = req.body.text || '';
+    const userId = req.body.user_id;
+    console.log("🧵 Slash command text:", text);
+
+    // Parse text: key=value pairs
     const args = Object.fromEntries(
       [...text.matchAll(/(\w+)=(".*?"|\S+)/g)].map(([_, key, val]) => [key, val.replace(/^"|"$/g, '')])
     );
 
-    channelId = args.channelId || userId;
+    channelId = args.channelId || userId; // fallback to user DM
     clientName = args.clientName || 'Cliente';
     extraInfo = args.extraInfo || '';
   } else {
-    // JSON payload
     ({ channelId, clientName, extraInfo } = req.body);
   }
 
-  console.log("📦 Final parsed payload:", { channelId, clientName, extraInfo });
+  console.log("📦 Payload received:", { channelId, clientName, extraInfo });
 
   if (!channelId || !clientName) {
     console.error("❌ Missing required fields");
@@ -57,13 +62,15 @@ export default async function handler(req, res) {
       },
     },
     ...(extraInfo
-      ? [{
-          type: 'section',
-          text: {
-            type: 'mrkdwn',
-            text: `📌 *Notas adicionales:*\n${extraInfo}`,
+      ? [
+          {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: `📌 *Notas adicionales:*\n${extraInfo}`,
+            },
           },
-        }]
+        ]
       : []),
     { type: 'divider' },
     ...CHECKLIST.map((item) => ({
@@ -103,6 +110,10 @@ export default async function handler(req, res) {
     if (!result.ok) {
       console.error("❌ Slack error:", result);
       return res.status(500).json({ error: 'Error enviando mensaje a Slack', details: result });
+    }
+
+    if (isSlackCommand) {
+      return res.status(200).send(`✅ Checklist enviada a <@${channelId}>.`);
     }
 
     return res.status(200).json({ ok: true, ts: result.ts, channel: result.channel });
