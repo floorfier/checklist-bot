@@ -101,11 +101,12 @@ export default async function handler(req, res) {
     });
 
     const result = await slackRes.json();
-    taskStatusMap[result.ts] = {
-      ...taskStatusMap[result.ts],
-      _clientEmail: clientEmail,
-    };
-    
+    taskStatusMap[result.ts] = CHECKLIST.reduce((acc, item) => {
+      acc[item.id] = 'incomplete';
+      return acc;
+    }, { _clientEmail: clientEmail });
+
+
     console.log("✅ Slack API response:", result);
 
     if (!result.ok) {
