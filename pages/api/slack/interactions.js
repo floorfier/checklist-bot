@@ -1,12 +1,17 @@
 import { CHECKLIST } from '../../lib/checklist.js';
+import { taskStatusMap } from '../../lib/taskStatusMap.js';
 
 const SLACK_TOKEN = process.env.SLACK_BOT_TOKEN;
 
-// Estado simple en memoria (solo ejemplo)
-const taskStatusMap = {}; // { ts: { taskId: 'complete' | 'incomplete', ... } }
-
-function buildBlocksFromStatus(currentStatus) {
+function buildBlocksFromStatus(currentStatus, clientEmail) {
   const blocks = [
+    {
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: `*Checklist de migración para:* ${clientEmail}`,
+      },
+    },
     {
       type: 'section',
       text: {
@@ -84,6 +89,7 @@ export default async function handler(req, res) {
 
   // Obtener estado actual o inicializar
   const currentStatus = taskStatusMap[message.ts] || {};
+  const clientEmail = currentStatus._clientEmail || 'Cliente desconocido';
   const currentValue = currentStatus[taskId] || 'incomplete';
 
   // Alternar estado
@@ -92,7 +98,7 @@ export default async function handler(req, res) {
   taskStatusMap[message.ts] = currentStatus;
 
   // Reconstruir bloques con estado actualizado
-  const updatedBlocks = buildBlocksFromStatus(currentStatus);
+  const updatedBlocks = buildBlocksFromStatus(currentStatus, clientEmail);
 
   try {
     const response = await fetch('https://slack.com/api/chat.update', {

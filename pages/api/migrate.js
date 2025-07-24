@@ -1,5 +1,6 @@
 import { CHECKLIST } from '../lib/checklist.js';
 import { getSlackUsername } from '../lib/getSlackUsername.js';
+import { taskStatusMap } from '../lib/taskStatusMap.js';
 
 const SLACK_TOKEN = process.env.SLACK_BOT_TOKEN;
 
@@ -100,6 +101,11 @@ export default async function handler(req, res) {
     });
 
     const result = await slackRes.json();
+    taskStatusMap[result.ts] = {
+      ...taskStatusMap[result.ts],
+      _clientEmail: clientEmail,
+    };
+    
     console.log("✅ Slack API response:", result);
 
     if (!result.ok) {
