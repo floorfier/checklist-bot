@@ -3,20 +3,13 @@ import { taskStatusMap } from '../../lib/taskStatusMap.js';
 
 const SLACK_TOKEN = process.env.SLACK_BOT_TOKEN;
 
-function buildBlocksFromStatus(currentStatus, clientEmail) {
+function buildBlocksFromStatus(currentStatus, clientEmail = 'Cliente desconocido') {
   const blocks = [
     {
       type: 'section',
       text: {
         type: 'mrkdwn',
         text: `*Checklist de migración para:* ${clientEmail}`,
-      },
-    },
-    {
-      type: 'section',
-      text: {
-        type: 'mrkdwn',
-        text: '*Checklist de migración* (actualizado):',
       },
     },
     { type: 'divider' },
