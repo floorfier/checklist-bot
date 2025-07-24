@@ -41,7 +41,7 @@ function buildBlocksFromStatus(currentStatus, clientEmail = 'Cliente desconocido
     blocks.push({ type: 'divider' });
     blocks.push({
       type: 'section',
-      text: { type: 'mrkdwn', text: '🎉 *¡Checklist completa!* ¡Buen trabajo equipo!' },
+      text: { type: 'mrkdwn', text: '🎉 *¡Checklist completa!* ¡Buen trabajo equipo! 🥂 Chupito de celebración' },
     });
   }
 

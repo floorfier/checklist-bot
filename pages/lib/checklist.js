@@ -26,9 +26,5 @@ export const CHECKLIST = [
     {
         id: 'cancel_subscriptions',
         text: '5. Cancelar la suscripción en Realistico BD y Stripe <@U69SHENQ7>',
-    },
-    {
-        id: 'celebration_shot',
-        text: '6. 🥂 Chupito de celebración',
-    },
+    }
 ];
