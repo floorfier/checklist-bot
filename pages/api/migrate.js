@@ -1,4 +1,4 @@
-import { supabase } from '../../lib/supabaseClient.js';
+import { supabase } from '../lib/supabaseClient.js';
 import { CHECKLIST } from '../lib/checklist.js';
 import { getSlackUsername } from '../lib/getSlackUsername.js';
 import { taskStatusMap } from '../lib/taskStatusMap.js';
