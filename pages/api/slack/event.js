@@ -16,7 +16,7 @@ export default async function handler(req, res) {
     const checklistBlocks = [
       {
         type: 'section',
-        text: { type: 'mrkdwn', text: `*Checklist de migración para:* ${text || user_name}` },
+        text: { type: 'mrkdwn', text: `*Nueva migración de cliente de realisti.co:* ${text || user_name}` },
       },
       { type: 'divider' },
       // Aquí tus bloques checklist
@@ -31,7 +31,7 @@ export default async function handler(req, res) {
       body: JSON.stringify({
         channel: channel_id,
         blocks: checklistBlocks,
-        text: `Checklist migración para ${text || user_name}`,
+        text: `Nueva migración de cliente de realisti.co: ${text || user_name}`,
       }),
     });
 

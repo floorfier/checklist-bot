@@ -5,45 +5,29 @@ import { taskStatusMap } from '../lib/taskStatusMap.js';
 const SLACK_TOKEN = process.env.SLACK_BOT_TOKEN;
 
 export default async function handler(req, res) {
-  console.log("🔔 Incoming request to /api/migrate");
-
   if (req.method !== 'POST') {
-    console.warn("⚠️ Method not allowed:", req.method);
     res.setHeader('Allow', ['POST']);
     return res.status(405).end(`Method ${req.method} Not Allowed`);
   }
 
-  let { channelId, clientEmail, extraInfo, userId } = req.body;
+  let { channelId, clientEmail, plan, renewalDate, notes, extraInfo } = req.body;
 
-  // 👇 Si viene desde un Slack Slash Command, parseamos el campo "text"
+  // Compatibilidad con Slack Slash Command (parsing texto)
   if (!channelId && typeof req.body.text === 'string') {
-    console.log('🔍 Parsing text from Slack command:', req.body.text);
-
     const args = Object.fromEntries(
       req.body.text.match(/(\w+)=("[^"]+"|\S+)/g)?.map(pair => {
         const [key, value] = pair.split('=');
         return [key, value.replace(/^"|"$/g, '')];
       }) || []
     );
-
     channelId = args.channelId;
     clientEmail = args.clientEmail;
-    extraInfo = args.extraInfo?.replace(/\\n/g, '\n');
-    userId = args.userId || userId; // userId opcional desde texto también
+    plan = args.plan || plan;
+    renewalDate = args.renewalDate || renewalDate;
+    notes = args.notes ? args.notes.replace(/\\n/g, '\n') : notes;
   }
 
-  const slackUserId = userId || req.body.user_id || 'unknown user';
-
-  console.log("📦 Final values:", { channelId, clientEmail, extraInfo, slackUserId });
-
-  const username = await getSlackUsername(slackUserId);
-
   if (!channelId || !clientEmail) {
-    console.error(`❌ Missing required fields from ${username} (${slackUserId})`, {
-      channelId,
-      clientEmail,
-      extraInfo,
-    });
     return res.status(400).json({ error: 'Faltan channelId o clientEmail' });
   }
 
@@ -52,39 +36,51 @@ export default async function handler(req, res) {
       type: 'section',
       text: {
         type: 'mrkdwn',
-        text: `*Checklist de migración para:* ${clientEmail}`,
+        text: `*Nueva migración de cliente de realisti.co:* ${clientEmail}`,
       },
     },
-    ...(extraInfo
-      ? [
-          {
-            type: 'section',
-            text: {
-              type: 'mrkdwn',
-              text: `📌 *Notas adicionales:*\n${extraInfo}`,
-            },
-          },
-        ]
-      : []),
-    { type: 'divider' },
-    ...CHECKLIST.map((item) => ({
+    {
+      type: 'section',
+      fields: [
+        { type: 'mrkdwn', text: `*Plan contratado:*\n${plan || 'No especificado'}` },
+        { type: 'mrkdwn', text: `*Fecha de renovación:*\n${renewalDate || 'No especificada'}` },
+      ],
+    },
+  ];
+
+  if (notes) {
+    blocks.push({
       type: 'section',
       text: {
         type: 'mrkdwn',
-        text: item.text,
+        text: `📌 *Notas adicionales:*\n${notes}`,
       },
+    });
+  } else if (extraInfo) {
+    blocks.push({
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: `📌 *Notas adicionales:*\n${extraInfo}`,
+      },
+    });
+  }
+
+  blocks.push({ type: 'divider' });
+
+  blocks.push(
+    ...CHECKLIST.map(item => ({
+      type: 'section',
+      text: { type: 'mrkdwn', text: item.text },
       accessory: {
         type: 'button',
-        text: {
-          type: 'plain_text',
-          text: '✅ Hecho',
-        },
+        text: { type: 'plain_text', text: '✅ Hecho' },
         action_id: item.id,
         value: 'incomplete',
         style: 'primary',
       },
-    })),
-  ];
+    }))
+  );
 
   try {
     const slackRes = await fetch('https://slack.com/api/chat.postMessage', {
@@ -101,22 +97,18 @@ export default async function handler(req, res) {
     });
 
     const result = await slackRes.json();
+
     taskStatusMap[result.ts] = CHECKLIST.reduce((acc, item) => {
       acc[item.id] = 'incomplete';
       return acc;
-    }, { _clientEmail: clientEmail });
-
-
-    console.log("✅ Slack API response:", result);
+    }, { _clientEmail: clientEmail, _extraInfo: notes || extraInfo || '' });
 
     if (!result.ok) {
-      console.error(`❌ Slack error para usuario ${slackUserId}:`, result);
       return res.status(500).json({ error: 'Error enviando mensaje a Slack', details: result });
     }
 
     return res.status(200).json({ ok: true, ts: result.ts, channel: result.channel });
   } catch (err) {
-    console.error(`🔥 Error interno para usuario ${slackUserId}:`, err);
     return res.status(500).json({ error: 'Error interno', details: err.message });
   }
 }

@@ -7,43 +7,41 @@ function buildBlocksFromStatus(currentStatus, clientEmail = 'Cliente desconocido
   const blocks = [
     {
       type: 'section',
-      text: {
-        type: 'mrkdwn',
-        text: `*Checklist de migración para:* ${clientEmail}`,
-      },
+      text: { type: 'mrkdwn', text: `*Checklist de migración para:* ${clientEmail}` },
     },
-    { type: 'divider' },
-    ...CHECKLIST.map((item) => {
-      const done = currentStatus[item.id] === 'complete';
-      return {
-        type: 'section',
-        text: {
-          type: 'mrkdwn',
-          text: `${done ? '✅ ' : ''}${item.text}`,
-        },
-        accessory: {
-          type: 'button',
-          text: {
-            type: 'plain_text',
-            text: done ? 'Desmarcar' : '✅ Hecho',
-          },
-          action_id: item.id,
-          value: done ? 'complete' : 'incomplete',
-          style: done ? 'danger' : 'primary',
-        },
-      };
-    }),
   ];
 
-  const allCompleted = CHECKLIST.every((item) => currentStatus[item.id] === 'complete');
+  const extraInfo = currentStatus._extraInfo;
+  if (extraInfo) {
+    blocks.push({
+      type: 'context',
+      elements: [{ type: 'mrkdwn', text: extraInfo }],
+    });
+  }
+
+  blocks.push({ type: 'divider' });
+
+  for (const item of CHECKLIST) {
+    const done = currentStatus[item.id] === 'complete';
+    blocks.push({
+      type: 'section',
+      text: { type: 'mrkdwn', text: `${done ? '✅ ' : ''}${item.text}` },
+      accessory: {
+        type: 'button',
+        text: { type: 'plain_text', text: done ? 'Desmarcar' : '✅ Hecho' },
+        action_id: item.id,
+        value: done ? 'complete' : 'incomplete',
+        style: done ? 'danger' : 'primary',
+      },
+    });
+  }
+
+  const allCompleted = CHECKLIST.every(item => currentStatus[item.id] === 'complete');
   if (allCompleted) {
     blocks.push({ type: 'divider' });
     blocks.push({
       type: 'section',
-      text: {
-        type: 'mrkdwn',
-        text: '🎉 *¡Checklist completa!* ¡Buen trabajo equipo!',
-      },
+      text: { type: 'mrkdwn', text: '🎉 *¡Checklist completa!* ¡Buen trabajo equipo!' },
     });
   }
 
@@ -56,45 +54,39 @@ export default async function handler(req, res) {
     return res.status(405).end(`Method ${req.method} Not Allowed`);
   }
 
-  if (!req.body.payload) {
-    return res.status(400).send('Missing payload');
-  }
+  if (!req.body.payload) return res.status(400).send('Missing payload');
 
   let payload;
   try {
     payload = JSON.parse(req.body.payload);
-  } catch (err) {
-    console.error('Error parsing payload JSON', err);
+  } catch {
     return res.status(400).send('Invalid payload JSON');
   }
 
   const { actions, message, channel, user } = payload;
-
-  if (!actions || actions.length === 0) {
-    return res.status(400).send('No actions found');
-  }
+  if (!actions?.length) return res.status(400).send('No actions found');
 
   const action = actions[0];
   const taskId = action.action_id;
 
-  const username = user?.username || user?.name || 'Unknown user';
-  console.log(`📩 Message from user ${username}: toggling task "${taskId}"`);
-
-  // Obtener estado actual o inicializar
   const currentStatus = taskStatusMap[message.ts] || {};
+
   const clientEmail = currentStatus._clientEmail || 'Cliente desconocido';
-  const currentValue = currentStatus[taskId] || 'incomplete';
+  const extraInfo = currentStatus._extraInfo || null;
 
   // Alternar estado
-  const newValue = currentValue === 'incomplete' ? 'complete' : 'incomplete';
-  currentStatus[taskId] = newValue;
+  const currentValue = currentStatus[taskId] || 'incomplete';
+  currentStatus[taskId] = currentValue === 'incomplete' ? 'complete' : 'incomplete';
+
+  currentStatus._clientEmail = clientEmail;
+  if (extraInfo) currentStatus._extraInfo = extraInfo;
+
   taskStatusMap[message.ts] = currentStatus;
 
-  // Reconstruir bloques con estado actualizado
   const updatedBlocks = buildBlocksFromStatus(currentStatus, clientEmail);
 
   try {
-    const response = await fetch('https://slack.com/api/chat.update', {
+    const slackRes = await fetch('https://slack.com/api/chat.update', {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${SLACK_TOKEN}`,
@@ -108,16 +100,13 @@ export default async function handler(req, res) {
       }),
     });
 
-    const data = await response.json();
-
-    if (!data.ok) {
-      console.error(`❌ Slack API error para usuario ${username}:`, data);
-      return res.status(500).json({ error: 'Error actualizando mensaje', details: data });
+    const slackData = await slackRes.json();
+    if (!slackData.ok) {
+      return res.status(500).send('Error actualizando mensaje en Slack');
     }
 
-    res.status(200).end();
+    return res.status(200).send('');
   } catch (error) {
-    console.error(`🔥 Internal error para usuario ${username}:`, error);
-    res.status(500).json({ error: 'Error interno', details: error.message });
+    return res.status(500).send('Error interno');
   }
 }
