@@ -65,15 +65,15 @@ export default async function handler(req, res) {
       fields: [
         {
           type: 'mrkdwn',
-          text: `*Email:*\n${clientEmail} 📧`,
+          text: `📧 *Email:*\n${clientEmail}`,
         },
         {
           type: 'mrkdwn',
-          text: `*Plan contratado:*\n${plan || 'No especificado'} 🎯`,
+          text: `🎯 *Plan contratado:*\n${plan || 'No especificado'}`,
         },
         {
           type: 'mrkdwn',
-          text: `*Fecha de renovación:*\n${renewalDate || 'No especificada'} 🗓️`,
+          text: `🗓️ *Fecha de renovación:*\n${renewalDate || 'No especificada'}`,
         },
       ],
     },
@@ -127,7 +127,6 @@ export default async function handler(req, res) {
       acc[item.id] = 'incomplete';
       return acc;
     }, { _clientEmail: clientEmail, _plan: plan, _renewalDate: renewalDate, _extraInfo: extraInfo });
-
 
     console.log("✅ Slack API response:", result);
 
