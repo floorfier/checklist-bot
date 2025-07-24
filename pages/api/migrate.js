@@ -4,14 +4,60 @@ import { taskStatusMap } from '../lib/taskStatusMap.js';
 
 const SLACK_TOKEN = process.env.SLACK_BOT_TOKEN;
 
-// Función que crea los bloques para el mensaje Slack
-function buildSlackBlocks({ clientEmail, plan, renewalDate, notes }) {
+export default async function handler(req, res) {
+  console.log("🔔 Incoming request to /api/migrate");
+
+  if (req.method !== 'POST') {
+    console.warn("⚠️ Method not allowed:", req.method);
+    res.setHeader('Allow', ['POST']);
+    return res.status(405).end(`Method ${req.method} Not Allowed`);
+  }
+
+  let { channelId, clientEmail, plan, renewalDate, extraInfo, userId } = req.body;
+
+  // 👇 Si viene desde un Slack Slash Command, parseamos el campo "text"
+  if (!channelId && typeof req.body.text === 'string') {
+    console.log('🔍 Parsing text from Slack command:', req.body.text);
+
+    const args = Object.fromEntries(
+      req.body.text.match(/(\w+)=("[^"]+"|\S+)/g)?.map(pair => {
+        const [key, value] = pair.split('=');
+        return [key, value.replace(/^"|"$/g, '')];
+      }) || []
+    );
+
+    channelId = args.channelId;
+    clientEmail = args.clientEmail;
+    plan = args.plan;
+    renewalDate = args.renewalDate;
+    extraInfo = args.extraInfo?.replace(/\\n/g, '\n');
+    userId = args.userId || userId;
+  }
+
+  const slackUserId = userId || req.body.user_id || 'unknown user';
+
+  console.log("📦 Final values:", { channelId, clientEmail, plan, renewalDate, extraInfo, slackUserId });
+
+  const username = await getSlackUsername(slackUserId);
+
+  if (!channelId || !clientEmail) {
+    console.error(`❌ Missing required fields from ${username} (${slackUserId})`, {
+      channelId,
+      clientEmail,
+      plan,
+      renewalDate,
+      extraInfo,
+    });
+    return res.status(400).json({ error: 'Faltan channelId o clientEmail' });
+  }
+
   const blocks = [
     {
-      type: 'section',
+      type: 'header',
       text: {
-        type: 'mrkdwn',
-        text: '*🚀 Nueva migración de cliente de realisti.co*',
+        type: 'plain_text',
+        text: '🚀 Nueva migración de cliente de realisti.co',
+        emoji: true,
       },
     },
     {
@@ -19,33 +65,30 @@ function buildSlackBlocks({ clientEmail, plan, renewalDate, notes }) {
       fields: [
         {
           type: 'mrkdwn',
-          text: `*📧 Email:*\n${clientEmail}`,
+          text: `*Email:*\n${clientEmail} 📧`,
         },
         {
           type: 'mrkdwn',
-          text: `*📅 Fecha de renovación:*\n${renewalDate || 'No especificada'}`,
+          text: `*Plan contratado:*\n${plan || 'No especificado'} 🎯`,
         },
         {
           type: 'mrkdwn',
-          text: `*💼 Plan contratado:*\n${plan || 'No especificado'}`,
+          text: `*Fecha de renovación:*\n${renewalDate || 'No especificada'} 🗓️`,
         },
       ],
     },
-  ];
-
-  if (notes) {
-    blocks.push({
-      type: 'section',
-      text: {
-        type: 'mrkdwn',
-        text: `📝 *Notas adicionales:*\n${notes}`,
-      },
-    });
-  }
-
-  blocks.push({ type: 'divider' });
-
-  blocks.push(
+    ...(extraInfo
+      ? [
+          {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: `📌 *Notas adicionales:*\n${extraInfo}`,
+            },
+          },
+        ]
+      : []),
+    { type: 'divider' },
     ...CHECKLIST.map((item) => ({
       type: 'section',
       text: {
@@ -62,58 +105,8 @@ function buildSlackBlocks({ clientEmail, plan, renewalDate, notes }) {
         value: 'incomplete',
         style: 'primary',
       },
-    }))
-  );
-
-  return blocks;
-}
-
-export default async function handler(req, res) {
-  console.log("🔔 Incoming request to /api/migrate");
-
-  if (req.method !== 'POST') {
-    console.warn("⚠️ Method not allowed:", req.method);
-    res.setHeader('Allow', ['POST']);
-    return res.status(405).end(`Method ${req.method} Not Allowed`);
-  }
-
-  let { channelId, clientEmail, plan, renewalDate, notes, userId } = req.body;
-
-  // Parsing Slack slash command text if needed
-  if (!channelId && typeof req.body.text === 'string') {
-    const args = Object.fromEntries(
-      req.body.text.match(/(\w+)=("[^"]+"|\S+)/g)?.map(pair => {
-        const [key, value] = pair.split('=');
-        return [key, value.replace(/^"|"$/g, '')];
-      }) || []
-    );
-
-    channelId = args.channelId;
-    clientEmail = args.clientEmail;
-    plan = args.plan;
-    renewalDate = args.renewalDate;
-    notes = args.notes?.replace(/\\n/g, '\n');
-    userId = args.userId || userId;
-  }
-
-  const slackUserId = userId || req.body.user_id || 'unknown user';
-
-  console.log("📦 Final values:", { channelId, clientEmail, plan, renewalDate, notes, slackUserId });
-
-  const username = await getSlackUsername(slackUserId);
-
-  if (!channelId || !clientEmail) {
-    console.error(`❌ Missing required fields from ${username} (${slackUserId})`, {
-      channelId,
-      clientEmail,
-      plan,
-      renewalDate,
-      notes,
-    });
-    return res.status(400).json({ error: 'Faltan channelId o clientEmail' });
-  }
-
-  const blocks = buildSlackBlocks({ clientEmail, plan, renewalDate, notes });
+    })),
+  ];
 
   try {
     const slackRes = await fetch('https://slack.com/api/chat.postMessage', {
@@ -133,7 +126,8 @@ export default async function handler(req, res) {
     taskStatusMap[result.ts] = CHECKLIST.reduce((acc, item) => {
       acc[item.id] = 'incomplete';
       return acc;
-    }, { _clientEmail: clientEmail });
+    }, { _clientEmail: clientEmail, _plan: plan, _renewalDate: renewalDate, _extraInfo: extraInfo });
+
 
     console.log("✅ Slack API response:", result);
 
