@@ -1,3 +1,4 @@
+import { supabase } from '../../lib/supabaseClient.js';
 import { CHECKLIST } from '../lib/checklist.js';
 import { getSlackUsername } from '../lib/getSlackUsername.js';
 import { taskStatusMap } from '../lib/taskStatusMap.js';
@@ -5,27 +6,20 @@ import { taskStatusMap } from '../lib/taskStatusMap.js';
 const SLACK_TOKEN = process.env.SLACK_BOT_TOKEN;
 
 export default async function handler(req, res) {
-  console.log("🔔 Incoming request to /api/migrate");
-
   if (req.method !== 'POST') {
-    console.warn("⚠️ Method not allowed:", req.method);
     res.setHeader('Allow', ['POST']);
     return res.status(405).end(`Method ${req.method} Not Allowed`);
   }
 
   let { channelId, clientEmail, plan, renewalDate, extraInfo, userId } = req.body;
 
-  // 👇 Si viene desde un Slack Slash Command, parseamos el campo "text"
   if (!channelId && typeof req.body.text === 'string') {
-    console.log('🔍 Parsing text from Slack command:', req.body.text);
-
     const args = Object.fromEntries(
       req.body.text.match(/(\w+)=("[^"]+"|\S+)/g)?.map(pair => {
         const [key, value] = pair.split('=');
         return [key, value.replace(/^"|"$/g, '')];
       }) || []
     );
-
     channelId = args.channelId;
     clientEmail = args.clientEmail;
     plan = args.plan;
@@ -34,23 +28,66 @@ export default async function handler(req, res) {
     userId = args.userId || userId;
   }
 
-  const slackUserId = userId || req.body.user_id || 'unknown user';
-
-  console.log("📦 Final values:", { channelId, clientEmail, plan, renewalDate, extraInfo, slackUserId });
-
-  const username = await getSlackUsername(slackUserId);
-
   if (!channelId || !clientEmail) {
-    console.error(`❌ Missing required fields from ${username} (${slackUserId})`, {
-      channelId,
-      clientEmail,
-      plan,
-      renewalDate,
-      extraInfo,
-    });
     return res.status(400).json({ error: 'Faltan channelId o clientEmail' });
   }
 
+  const slackUserId = userId || req.body.user_id || 'unknown user';
+  const username = await getSlackUsername(slackUserId);
+
+  // Primero revisamos si ya hay un registro en supabase con ese email
+  let { data: existing, error: fetchError } = await supabase
+    .from('migrations')
+    .select('*')
+    .eq('email', clientEmail)
+    .single();
+
+  if (fetchError && fetchError.code !== 'PGRST116') { // 116 = no rows found
+    console.error('Error fetching migration:', fetchError);
+    return res.status(500).json({ error: 'Error consultando base de datos' });
+  }
+
+  // Si no existe, creamos uno nuevo con el checklist en estado inicial
+  if (!existing) {
+    const initialCheckStatus = CHECKLIST.reduce((acc, item) => {
+      acc[item.id] = 'incomplete';
+      return acc;
+    }, {});
+
+    const { data: insertData, error: insertError } = await supabase
+      .from('migrations')
+      .insert({
+        email: clientEmail,
+        plan,
+        renewal_date: renewalDate,
+        extra_info: extraInfo,
+        check_status: initialCheckStatus,
+        slack_channel: channelId,
+        slack_ts: null,
+      })
+      .select()
+      .single();
+
+    if (insertError) {
+      console.error('Error inserting migration:', insertError);
+      return res.status(500).json({ error: 'Error guardando en base de datos' });
+    }
+
+    existing = insertData;
+  } else {
+    // Si existe, actualizamos plan, fecha y notas si vienen en el body (para no perder info)
+    await supabase
+      .from('migrations')
+      .update({
+        plan: plan || existing.plan,
+        renewal_date: renewalDate || existing.renewal_date,
+        extra_info: extraInfo || existing.extra_info,
+        slack_channel: channelId || existing.slack_channel,
+      })
+      .eq('email', clientEmail);
+  }
+
+  // Construimos los bloques Slack usando existing y CHECKLIST
   const blocks = [
     {
       type: 'header',
@@ -63,81 +100,85 @@ export default async function handler(req, res) {
     {
       type: 'section',
       fields: [
-        {
-          type: 'mrkdwn',
-          text: `📧 *Email:*\n${clientEmail}`,
-        },
-        {
-          type: 'mrkdwn',
-          text: `🎯 *Plan contratado:*\n${plan || 'No especificado'}`,
-        },
-        {
-          type: 'mrkdwn',
-          text: `🗓️ *Fecha de renovación:*\n${renewalDate || 'No especificada'}`,
-        },
+        { type: 'mrkdwn', text: `📧 *Email:*\n${existing.email}` },
+        { type: 'mrkdwn', text: `🎯 *Plan contratado:*\n${existing.plan || 'No especificado'}` },
+        { type: 'mrkdwn', text: `🗓️ *Fecha de renovación:*\n${existing.renewal_date || 'No especificada'}` },
       ],
     },
-    ...(extraInfo
+    ...(existing.extra_info
       ? [
           {
             type: 'section',
-            text: {
-              type: 'mrkdwn',
-              text: `📌 *Notas adicionales:*\n${extraInfo}`,
-            },
+            text: { type: 'mrkdwn', text: `📝 *Notas adicionales:*\n${existing.extra_info}` },
           },
         ]
       : []),
     { type: 'divider' },
     ...CHECKLIST.map((item) => ({
       type: 'section',
-      text: {
-        type: 'mrkdwn',
-        text: item.text,
-      },
+      text: { type: 'mrkdwn', text: item.text },
       accessory: {
         type: 'button',
-        text: {
-          type: 'plain_text',
-          text: '✅ Hecho',
-        },
+        text: { type: 'plain_text', text: existing.check_status?.[item.id] === 'complete' ? '✅ Hecho' : '⬜ Pendiente' },
         action_id: item.id,
-        value: 'incomplete',
-        style: 'primary',
+        value: existing.check_status?.[item.id] === 'complete' ? 'complete' : 'incomplete',
+        style: existing.check_status?.[item.id] === 'complete' ? 'primary' : undefined,
       },
     })),
   ];
 
-  try {
-    const slackRes = await fetch('https://slack.com/api/chat.postMessage', {
+  // Enviamos o actualizamos el mensaje Slack
+  const slackBody = {
+    channel: channelId,
+    text: `Checklist migración para ${clientEmail}`,
+    blocks,
+  };
+
+  let slackRes;
+  if (!existing.slack_ts) {
+    // Enviar nuevo mensaje
+    slackRes = await fetch('https://slack.com/api/chat.postMessage', {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${SLACK_TOKEN}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        channel: channelId,
-        text: `Checklist migración para ${clientEmail}`,
-        blocks,
-      }),
+      body: JSON.stringify(slackBody),
     });
 
-    const result = await slackRes.json();
-    taskStatusMap[result.ts] = CHECKLIST.reduce((acc, item) => {
-      acc[item.id] = 'incomplete';
-      return acc;
-    }, { _clientEmail: clientEmail, _plan: plan, _renewalDate: renewalDate, _extraInfo: extraInfo });
-
-    console.log("✅ Slack API response:", result);
-
-    if (!result.ok) {
-      console.error(`❌ Slack error para usuario ${slackUserId}:`, result);
-      return res.status(500).json({ error: 'Error enviando mensaje a Slack', details: result });
+    const slackResult = await slackRes.json();
+    if (!slackResult.ok) {
+      console.error('Error Slack postMessage:', slackResult);
+      return res.status(500).json({ error: 'Error enviando mensaje a Slack', details: slackResult });
     }
 
-    return res.status(200).json({ ok: true, ts: result.ts, channel: result.channel });
-  } catch (err) {
-    console.error(`🔥 Error interno para usuario ${slackUserId}:`, err);
-    return res.status(500).json({ error: 'Error interno', details: err.message });
+    // Guardar ts para futuras actualizaciones
+    await supabase
+      .from('migrations')
+      .update({ slack_ts: slackResult.ts })
+      .eq('email', clientEmail);
+
+    existing.slack_ts = slackResult.ts;
+  } else {
+    // Actualizar mensaje existente
+    slackBody.ts = existing.slack_ts;
+    slackRes = await fetch('https://slack.com/api/chat.update', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${SLACK_TOKEN}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(slackBody),
+    });
+
+    const slackResult = await slackRes.json();
+    if (!slackResult.ok) {
+      console.error('Error Slack chat.update:', slackResult);
+      return res.status(500).json({ error: 'Error actualizando mensaje Slack', details: slackResult });
+    }
   }
+
+  taskStatusMap[existing.slack_ts] = existing.check_status || {};
+
+  return res.status(200).json({ ok: true, ts: existing.slack_ts, channel: channelId });
 }
