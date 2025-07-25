@@ -1,11 +1,7 @@
 import { CHECKLIST } from '../../lib/checklist.js';
-import { createClient } from '../../lib/supabaseClient.js';
+import { supabase } from '../../lib/supabaseClient.js';
 
 const SLACK_TOKEN = process.env.SLACK_BOT_TOKEN;
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
 /**
  * Construye los bloques Slack con historial visual.
@@ -86,101 +82,106 @@ export default async function handler(req, res) {
     return res.status(405).end(`Method ${req.method} Not Allowed`);
   }
 
-  if (!req.body.payload) return res.status(400).send('Missing payload');
-
-  let payload;
   try {
-    payload = JSON.parse(req.body.payload);
-  } catch {
-    return res.status(400).send('Invalid payload JSON');
-  }
+    if (!req.body.payload) return res.status(400).send('Missing payload');
 
-  res.status(200).send(); // Siempre responder de inmediato a Slack
+    let payload;
+    try {
+      payload = JSON.parse(req.body.payload);
+    } catch {
+      return res.status(400).send('Invalid payload JSON');
+    }
 
-  const { actions, user, message } = payload;
-  const channelId = message?.channel || payload.channel?.id;
-  const messageTs = message?.ts;
+    res.status(200).send(); // Responder rápido a Slack
 
-  if (!actions?.length || !channelId || !messageTs) {
-    console.error('Faltan datos necesarios para actualizar el mensaje');
-    return;
-  }
+    const { actions, user, message } = payload;
+    const channelId = message?.channel || payload.channel?.id;
+    const messageTs = message?.ts;
 
-  const action = actions[0];
-  const taskId = action.action_id;
+    if (!actions?.length || !channelId || !messageTs) {
+      console.error('Faltan datos necesarios para actualizar el mensaje');
+      return;
+    }
 
-  // 1. Obtener checklist desde Supabase
-  const { data: migration, error } = await supabase
-    .from('migrations')
-    .select('id, email, extra_info, check_status, check_history')
-    .eq('slack_ts', messageTs)
-    .single();
+    const action = actions[0];
+    const taskId = action.action_id;
 
-  if (error || !migration) {
-    console.error('No se encontró la checklist:', error);
-    return;
-  }
+    // Obtener checklist desde Supabase
+    const { data: migration, error } = await supabase
+      .from('migrations')
+      .select('id, email, extra_info, check_status, check_history')
+      .eq('slack_ts', messageTs)
+      .single();
 
-  const taskStatus = migration.check_status || {};
-  const checkHistory = migration.check_history || {};
+    if (error || !migration) {
+      console.error('No se encontró la checklist:', error);
+      return;
+    }
 
-  // 2. Alternar estado
-  const currentValue = taskStatus[taskId] || 'incomplete';
-  const newValue = currentValue === 'incomplete' ? 'complete' : 'incomplete';
-  taskStatus[taskId] = newValue;
+    const taskStatus = migration.check_status || {};
+    const checkHistory = migration.check_history || {};
 
-  // 3. Agregar entrada al historial
-  const username = payload.user?.username || '';
-  const userId = payload.user?.id;
-  const now = new Date().toISOString();
+    // Alternar estado
+    const currentValue = taskStatus[taskId] || 'incomplete';
+    const newValue = currentValue === 'incomplete' ? 'complete' : 'incomplete';
+    taskStatus[taskId] = newValue;
 
-  if (!checkHistory[taskId]) checkHistory[taskId] = [];
+    // Agregar entrada al historial
+    const username = payload.user?.username || '';
+    const userId = payload.user?.id;
+    const now = new Date().toISOString();
 
-  checkHistory[taskId].push({
-    at: now,
-    by: userId,
-    username,
-    to: newValue,
-  });
+    if (!checkHistory[taskId]) checkHistory[taskId] = [];
 
-  // 4. Actualizar Supabase
-  const { error: updateError } = await supabase
-    .from('migrations')
-    .update({
-      check_status: taskStatus,
-      check_history: checkHistory,
-    })
-    .eq('id', migration.id);
-
-  if (updateError) {
-    console.error('Error actualizando Supabase:', updateError);
-    return;
-  }
-
-  // 5. Construir nuevos bloques
-  const updatedBlocks = buildBlocksFromStatus(taskStatus, migration.email, checkHistory);
-
-  // 6. Actualizar mensaje en Slack
-  try {
-    const slackRes = await fetch('https://slack.com/api/chat.update', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${SLACK_TOKEN}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        channel: channelId,
-        ts: messageTs,
-        blocks: updatedBlocks,
-        text: 'Checklist actualizada',
-      }),
+    checkHistory[taskId].push({
+      at: now,
+      by: userId,
+      username,
+      to: newValue,
     });
 
-    const slackResult = await slackRes.json();
-    if (!slackResult.ok) {
-      console.error('Slack update error:', slackResult);
+    // Actualizar Supabase
+    const { error: updateError } = await supabase
+      .from('migrations')
+      .update({
+        check_status: taskStatus,
+        check_history: checkHistory,
+      })
+      .eq('id', migration.id);
+
+    if (updateError) {
+      console.error('Error actualizando Supabase:', updateError);
+      return;
+    }
+
+    // Construir nuevos bloques
+    const updatedBlocks = buildBlocksFromStatus(taskStatus, migration.email, checkHistory);
+
+    // Actualizar mensaje en Slack
+    try {
+      const slackRes = await fetch('https://slack.com/api/chat.update', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${SLACK_TOKEN}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          channel: channelId,
+          ts: messageTs,
+          blocks: updatedBlocks,
+          text: 'Checklist actualizada',
+        }),
+      });
+
+      const slackResult = await slackRes.json();
+      if (!slackResult.ok) {
+        console.error('Slack update error:', slackResult);
+      }
+    } catch (err) {
+      console.error('Error actualizando mensaje en Slack:', err);
     }
   } catch (err) {
-    console.error('Error actualizando mensaje en Slack:', err);
+    console.error('Error inesperado en handler:', err);
+    res.status(500).send('Internal Server Error');
   }
 }
