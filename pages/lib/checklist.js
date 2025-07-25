@@ -13,7 +13,7 @@ export const CHECKLIST = [
     },
     {
         id: 'create_floorfy_account',
-        text: '2. Crear cuenta de Floorfy con plan de pago asignado. <#C895ELZ46>',
+        text: '2. Crear cuenta de Floorfy con un método de pago asignado. <#C895ELZ46>',
     },
     {
         id: 'migrate_tours',
