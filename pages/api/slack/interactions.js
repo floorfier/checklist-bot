@@ -63,14 +63,16 @@ export default async function handler(req, res) {
     return res.status(400).send('Invalid payload JSON');
   }
 
-  const { actions, message, channel, user } = payload;
-  if (!actions?.length) return res.status(400).send('No actions found');
+  // ✅ Responder a Slack INMEDIATAMENTE
+  res.status(200).send();
+
+  const { actions, message, channel } = payload;
+  if (!actions?.length) return;
 
   const action = actions[0];
   const taskId = action.action_id;
 
   const currentStatus = taskStatusMap[message.ts] || {};
-
   const clientEmail = currentStatus._clientEmail || 'Cliente desconocido';
   const extraInfo = currentStatus._extraInfo || null;
 
@@ -86,7 +88,7 @@ export default async function handler(req, res) {
   const updatedBlocks = buildBlocksFromStatus(currentStatus, clientEmail);
 
   try {
-    const slackRes = await fetch('https://slack.com/api/chat.update', {
+    await fetch('https://slack.com/api/chat.update', {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${SLACK_TOKEN}`,
@@ -99,14 +101,7 @@ export default async function handler(req, res) {
         text: 'Checklist actualizada',
       }),
     });
-
-    const slackData = await slackRes.json();
-    if (!slackData.ok) {
-      return res.status(500).send('Error actualizando mensaje en Slack');
-    }
-
-    return res.status(200).send('');
   } catch (error) {
-    return res.status(500).send('Error interno');
+    console.error('Error actualizando mensaje en Slack:', error);
   }
 }
