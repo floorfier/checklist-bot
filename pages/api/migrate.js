@@ -1,7 +1,6 @@
 import { supabase } from '../lib/supabaseClient.js';
 import { CHECKLIST } from '../lib/checklist.js';
 import { getSlackUsername } from '../lib/getSlackUsername.js';
-import { taskStatusMap } from '../lib/taskStatusMap.js';
 
 const SLACK_TOKEN = process.env.SLACK_BOT_TOKEN;
 
@@ -35,19 +34,19 @@ export default async function handler(req, res) {
   const slackUserId = userId || req.body.user_id || 'unknown user';
   const username = await getSlackUsername(slackUserId);
 
-  // Primero revisamos si ya hay un registro en supabase con ese email
+  // Buscar si ya existe
   let { data: existing, error: fetchError } = await supabase
     .from('migrations')
     .select('*')
     .eq('email', clientEmail)
     .single();
 
-  if (fetchError && fetchError.code !== 'PGRST116') { // 116 = no rows found
+  if (fetchError && fetchError.code !== 'PGRST116') {
     console.error('Error fetching migration:', fetchError);
     return res.status(500).json({ error: 'Error consultando base de datos' });
   }
 
-  // Si no existe, creamos uno nuevo con el checklist en estado inicial
+  // Si no existe, crear nueva
   if (!existing) {
     const initialCheckStatus = CHECKLIST.reduce((acc, item) => {
       acc[item.id] = 'incomplete';
@@ -75,7 +74,7 @@ export default async function handler(req, res) {
 
     existing = insertData;
   } else {
-    // Si existe, actualizamos plan, fecha y notas si vienen en el body (para no perder info)
+    // Si ya existe, actualizar campos opcionales
     await supabase
       .from('migrations')
       .update({
@@ -85,9 +84,17 @@ export default async function handler(req, res) {
         slack_channel: channelId || existing.slack_channel,
       })
       .eq('email', clientEmail);
+
+    // Refrescar datos tras actualización
+    const { data: refreshed } = await supabase
+      .from('migrations')
+      .select('*')
+      .eq('email', clientEmail)
+      .single();
+    existing = refreshed;
   }
 
-  // Construimos los bloques Slack usando existing y CHECKLIST
+  // Construcción del mensaje Slack
   const blocks = [
     {
       type: 'header',
@@ -119,7 +126,10 @@ export default async function handler(req, res) {
       text: { type: 'mrkdwn', text: item.text },
       accessory: {
         type: 'button',
-        text: { type: 'plain_text', text: existing.check_status?.[item.id] === 'complete' ? '✅ Hecho' : '⬜ Pendiente' },
+        text: {
+          type: 'plain_text',
+          text: existing.check_status?.[item.id] === 'complete' ? '✅ Hecho' : '⏳ Pendiente',
+        },
         action_id: item.id,
         value: existing.check_status?.[item.id] === 'complete' ? 'complete' : 'incomplete',
         style: existing.check_status?.[item.id] === 'complete' ? 'primary' : undefined,
@@ -127,7 +137,6 @@ export default async function handler(req, res) {
     })),
   ];
 
-  // Enviamos o actualizamos el mensaje Slack
   const slackBody = {
     channel: channelId,
     text: `Checklist migración para ${clientEmail}`,
@@ -136,7 +145,6 @@ export default async function handler(req, res) {
 
   let slackRes;
   if (!existing.slack_ts) {
-    // Enviar nuevo mensaje
     slackRes = await fetch('https://slack.com/api/chat.postMessage', {
       method: 'POST',
       headers: {
@@ -152,7 +160,6 @@ export default async function handler(req, res) {
       return res.status(500).json({ error: 'Error enviando mensaje a Slack', details: slackResult });
     }
 
-    // Guardar ts para futuras actualizaciones
     await supabase
       .from('migrations')
       .update({ slack_ts: slackResult.ts })
@@ -160,8 +167,8 @@ export default async function handler(req, res) {
 
     existing.slack_ts = slackResult.ts;
   } else {
-    // Actualizar mensaje existente
     slackBody.ts = existing.slack_ts;
+
     slackRes = await fetch('https://slack.com/api/chat.update', {
       method: 'POST',
       headers: {
@@ -177,8 +184,6 @@ export default async function handler(req, res) {
       return res.status(500).json({ error: 'Error actualizando mensaje Slack', details: slackResult });
     }
   }
-
-  taskStatusMap[existing.slack_ts] = existing.check_status || {};
 
   return res.status(200).json({ ok: true, ts: existing.slack_ts, channel: channelId });
 }
