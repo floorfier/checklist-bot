@@ -1,5 +1,5 @@
 import { CHECKLIST } from '../../lib/checklist.js';
-import { createClient } from '@supabase/supabase-js';
+import { createClient } from '../../lib/supabaseClient.js';
 
 const SLACK_TOKEN = process.env.SLACK_BOT_TOKEN;
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
